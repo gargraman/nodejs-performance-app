@@ -1,0 +1,272 @@
+# Artillery Load Testing Scenarios
+# Enterprise-grade performance testing configuration
+
+config:
+  target: 'http://localhost:3000'
+  phases:
+    # Warm-up phase - gradually increase load
+    - duration: 60
+      arrivalRate: 5
+      name: "Warm-up"
+
+    # Ramp-up phase - steady increase to target load
+    - duration: 120
+      arrivalRate: 5
+      rampTo: 50
+      name: "Ramp-up"
+
+    # Peak load phase - sustained high load
+    - duration: 300
+      arrivalRate: 50
+      name: "Peak Load"
+
+    # Spike test - sudden load increase
+    - duration: 60
+      arrivalRate: 100
+      name: "Spike Test"
+
+    # Recovery phase - gradual decrease
+    - duration: 120
+      arrivalRate: 100
+      rampTo: 10
+      name: "Recovery"
+
+    # Cool-down phase - minimal load
+    - duration: 60
+      arrivalRate: 2
+      name: "Cool-down"
+
+  # Payload configuration
+  payload:
+    path: "./test-data.csv"
+    fields:
+      - "offset"
+      - "limit"
+      - "totalRecords"
+      - "seed"
+
+  # Variable definitions
+  variables:
+    randomOffset:
+      min: 0
+      max: 1000
+    randomLimit:
+      min: 1
+      max: 100
+    recordCounts: [100, 500, 1000, 5000]
+    seeds: [12345, 67890, 11111, 22222]
+
+  # Plugins for enhanced monitoring
+  plugins:
+    metrics-by-endpoint:
+      useOnlyRequestNames: true
+
+    expect:
+      outputFormat: 'pretty'
+
+    # CloudWatch metrics (if AWS credentials are available)
+    # cloudwatch:
+    #   namespace: 'LambdaPerfTest'
+
+  # Performance thresholds
+  ensure:
+    # Response time thresholds
+    - http.response_time.p95: 500  # 95th percentile under 500ms
+    - http.response_time.p99: 1000 # 99th percentile under 1s
+
+    # Error rate thresholds
+    - http.request_rate: "> 40"    # Minimum 40 requests/second
+    - http.status_code.200: "> 95%" # 95% success rate
+    - http.status_code.400: "< 3%"  # Less than 3% client errors
+    - http.status_code.500: "< 1%"  # Less than 1% server errors
+
+# Test scenarios
+scenarios:
+  # Basic health check scenario
+  - name: "Health Check"
+    weight: 10
+    flow:
+      - get:
+          url: "/health"
+          expect:
+            - statusCode: 200
+            - contentType: "application/json"
+            - hasProperty: "status"
+            - equals: ["$.status", "healthy"]
+
+  # Records pagination scenario
+  - name: "Records Pagination - Normal Flow"
+    weight: 40
+    flow:
+      - get:
+          url: "/api/records"
+          qs:
+            offset: "{{ randomOffset }}"
+            limit: "{{ randomLimit }}"
+          expect:
+            - statusCode: 200
+            - contentType: "application/json"
+            - hasProperty: "data"
+            - hasProperty: "pagination"
+          capture:
+            - json: "$.requestId"
+              as: "requestId"
+            - json: "$.pagination.nextOffset"
+              as: "nextOffset"
+
+      # Follow pagination if nextOffset exists
+      - get:
+          url: "/api/records"
+          qs:
+            offset: "{{ nextOffset }}"
+            limit: "{{ randomLimit }}"
+          ifTrue: "nextOffset"
+          expect:
+            - statusCode: 200
+
+  # Data reset scenario
+  - name: "Data Management"
+    weight: 15
+    flow:
+      - post:
+          url: "/api/data/reset"
+          json:
+            totalRecords: "{{ $pick(recordCounts) }}"
+            seed: "{{ $pick(seeds) }}"
+          expect:
+            - statusCode: 200
+            - hasProperty: "success"
+            - equals: ["$.success", true]
+          capture:
+            - json: "$.data.totalRecords"
+              as: "totalRecords"
+
+      # Verify records after reset
+      - get:
+          url: "/api/records"
+          qs:
+            offset: 0
+            limit: 5
+          expect:
+            - statusCode: 200
+            - hasProperty: "data"
+
+  # Schema update scenario
+  - name: "Schema Updates"
+    weight: 10
+    flow:
+      - post:
+          url: "/api/data/seed"
+          json:
+            schema:
+              id:
+                type: "uuid"
+                required: true
+              testField:
+                type: "string"
+                required: true
+                constraints:
+                  length: 20
+              score:
+                type: "number"
+                constraints:
+                  min: 0
+                  max: 100
+            totalRecords: 1000
+          expect:
+            - statusCode: 200
+            - equals: ["$.success", true]
+
+  # Error handling scenario
+  - name: "Error Conditions"
+    weight: 5
+    flow:
+      # Test invalid parameters
+      - get:
+          url: "/api/records"
+          qs:
+            offset: "invalid"
+            limit: -1
+          expect:
+            - statusCode: 400
+
+      # Test non-existent endpoint
+      - get:
+          url: "/api/nonexistent"
+          expect:
+            - statusCode: 404
+
+  # Large dataset scenario
+  - name: "Large Dataset Operations"
+    weight: 15
+    flow:
+      # Reset to large dataset
+      - post:
+          url: "/api/data/reset"
+          json:
+            totalRecords: 50000
+            seed: 99999
+          expect:
+            - statusCode: 200
+
+      # Test large offset
+      - get:
+          url: "/api/records"
+          qs:
+            offset: 25000
+            limit: 100
+          expect:
+            - statusCode: 200
+            - hasProperty: "data"
+
+  # Concurrent operations scenario
+  - name: "Concurrent Data Access"
+    weight: 5
+    flow:
+      # Multiple concurrent requests to same endpoint
+      - parallel:
+          - get:
+              url: "/api/records"
+              qs:
+                offset: 0
+                limit: 20
+          - get:
+              url: "/api/records"
+              qs:
+                offset: 20
+                limit: 20
+          - get:
+              url: "/api/records"
+              qs:
+                offset: 40
+                limit: 20
+        expect:
+          - statusCode: 200
+
+# Before and after hooks
+before:
+  flow:
+    # Initialize test environment
+    - log: "Starting performance test suite"
+    - get:
+        url: "/health"
+        expect:
+          - statusCode: 200
+
+    # Setup initial data state
+    - post:
+        url: "/api/data/reset"
+        json:
+          totalRecords: 10000
+          seed: 42
+        expect:
+          - statusCode: 200
+
+after:
+  flow:
+    # Cleanup and verification
+    - log: "Performance test completed"
+    - get:
+        url: "/health"
+        expect:
+          - statusCode: 200

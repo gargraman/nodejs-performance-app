@@ -1,0 +1,118 @@
+{
+  "name": "Default User Profile Schema",
+  "description": "Default schema for generating user profile records for Lambda performance testing",
+  "version": "1.0.0",
+  "schema": {
+    "userId": {
+      "type": "uuid",
+      "required": true,
+      "description": "Unique identifier for the user"
+    },
+    "email": {
+      "type": "string",
+      "required": true,
+      "constraints": {
+        "pattern": "email",
+        "length": 25
+      },
+      "description": "User email address"
+    },
+    "firstName": {
+      "type": "string",
+      "required": true,
+      "constraints": {
+        "min": 2,
+        "max": 20
+      },
+      "description": "User first name"
+    },
+    "lastName": {
+      "type": "string",
+      "required": true,
+      "constraints": {
+        "min": 2,
+        "max": 30
+      },
+      "description": "User last name"
+    },
+    "age": {
+      "type": "number",
+      "required": true,
+      "constraints": {
+        "min": 18,
+        "max": 100,
+        "format": "integer"
+      },
+      "description": "User age in years"
+    },
+    "phoneNumber": {
+      "type": "string",
+      "required": false,
+      "constraints": {
+        "pattern": "phone"
+      },
+      "description": "User phone number (optional)"
+    },
+    "status": {
+      "type": "enum",
+      "required": true,
+      "constraints": {
+        "enum": ["active", "inactive", "pending", "suspended"]
+      },
+      "description": "User account status"
+    },
+    "balance": {
+      "type": "number",
+      "required": true,
+      "constraints": {
+        "min": 0,
+        "max": 1000000
+      },
+      "description": "User account balance"
+    },
+    "createdAt": {
+      "type": "iso8601",
+      "required": true,
+      "constraints": {
+        "min": "2020-01-01T00:00:00Z",
+        "max": "2024-12-31T23:59:59Z"
+      },
+      "description": "Account creation timestamp"
+    },
+    "isVerified": {
+      "type": "boolean",
+      "required": true,
+      "description": "Whether the user account is verified"
+    },
+    "metadata": {
+      "type": "string",
+      "required": false,
+      "constraints": {
+        "length": 100
+      },
+      "description": "Additional user metadata (optional)"
+    }
+  },
+  "examples": [
+    {
+      "userId": "123e4567-e89b-12d3-a456-426614174000",
+      "email": "john.doe@example.com",
+      "firstName": "John",
+      "lastName": "Doe",
+      "age": 30,
+      "phoneNumber": "+1234567890",
+      "status": "active",
+      "balance": 1500.75,
+      "createdAt": "2024-01-15T10:30:00Z",
+      "isVerified": true,
+      "metadata": "premium_user"
+    }
+  ],
+  "notes": [
+    "This schema generates realistic user profiles suitable for performance testing",
+    "Email patterns follow standard email format with configurable domains",
+    "Phone numbers use international format",
+    "Dates are generated within the specified range",
+    "All fields support deterministic generation based on seed values"
+  ]
+}
