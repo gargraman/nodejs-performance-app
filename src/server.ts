@@ -13,6 +13,7 @@ import { logger } from './utils/logger';
 import { DataGenerator } from './services/dataGenerator';
 import { RecordsController } from './controllers/recordsController';
 import { HealthController } from './controllers/healthController';
+import { OktaController } from './controllers/oktaController';
 
 // Middleware imports
 import { AuthMiddleware } from './middleware/auth';
@@ -27,6 +28,7 @@ export class PerformanceTestingServer {
   private dataGenerator!: DataGenerator;
   private recordsController!: RecordsController;
   private healthController!: HealthController;
+  private oktaController!: OktaController;
 
   // Middleware instances
   private authMiddleware!: AuthMiddleware;
@@ -135,6 +137,7 @@ export class PerformanceTestingServer {
     // Initialize controllers
     this.recordsController = new RecordsController(this.dataGenerator, logger);
     this.healthController = new HealthController(logger);
+    this.oktaController = new OktaController(logger);
   }
 
   /**
@@ -150,11 +153,14 @@ export class PerformanceTestingServer {
 
     // Data generation routes
     this.app.get('/api/records', this.recordsController.getRecords);
-    this.app.get('/api/v1/logs', this.recordsController.getLogs);
+    this.app.get('/api/v1/logs', this.routeLogsRequest.bind(this));
     this.app.post('/api/reset', this.recordsController.resetData);
     this.app.post('/api/seed', this.recordsController.seedData);
     this.app.get('/api/schema', this.recordsController.getSchema);
     this.app.get('/api/generator/metrics', this.recordsController.getMetrics);
+
+    // Okta-specific routes (direct endpoint for Okta integration testing)
+    this.app.get('/api/v1/okta/logs', this.oktaController.getLogs);
 
     // Configuration management routes
     this.app.get('/api/config', this.getConfiguration);
@@ -230,6 +236,15 @@ export class PerformanceTestingServer {
     };
 
     res.json(response);
+  };
+
+  /**
+   * Route logs requests - defaults to generic logs unless Okta-specific parameters are detected
+   */
+  private routeLogsRequest = (req: express.Request, res: express.Response): void => {
+    // Default to generic logs controller for backward compatibility
+    // For Okta integration, use the specific /api/v1/okta/logs endpoint
+    this.recordsController.getLogs(req, res);
   };
 
   /**
@@ -336,6 +351,7 @@ export class PerformanceTestingServer {
           health: '/api/health',
           records: '/api/records',
           logs: '/api/v1/logs',
+          oktaLogs: '/api/v1/okta/logs',
           reset: '/api/reset',
           seed: '/api/seed',
           config: '/api/config',
